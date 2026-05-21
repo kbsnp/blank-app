@@ -1,5 +1,4 @@
 import streamlit as st
-import os
 from google import genai
 from google.genai import types
 from gtts import gTTS
@@ -13,29 +12,23 @@ st.set_page_config(
 )
 
 st.title("🔍 Raw Image OCR to Audio Converter")
+st.write("Upload an image to extract text and convert it directly into spoken audio.")
 
-# 2. Resilient API Key Validation
-api_key = None
+# 2. HARDCODED GEMINI API KEY SETUP
+# Replace the string below with your real key from Google AI Studio
+GEMINI_API_KEY = "AIzaSyCiztN0jffUo4jTm_MRbyQGtJArCdwOuEc"
 
-if "GEMINI_API_KEY" in st.secrets:
-    api_key = st.secrets["GEMINI_API_KEY"]
-elif os.environ.get("GEMINI_API_KEY"):
-    api_key = os.environ.get("GEMINI_API_KEY")
-
-if not api_key:
-    st.error(
-        "❌ **No API Key Found!**\n\n"
-        "Please add your `GEMINI_API_KEY` to your `.streamlit/secrets.toml` file or "
-        "export it as an environment variable in your terminal window."
-    )
-    st.stop()
-
-# Initialize the GenAI Client explicitly with the discovered key string
+# Initialize the GenAI Client using the hardcoded key directly
 try:
-    client = genai.Client(api_key=api_key)
+    if GEMINI_API_KEY == "AIzaSy_YOUR_ACTUAL_API_KEY_HERE" or not GEMINI_API_KEY:
+        st.warning("⚠️ Please open `app.py` and replace the placeholder string with your real Gemini API key.")
+        st.stop()
+    else:
+        client = genai.Client(api_key=GEMINI_API_KEY)
 except Exception as e:
     st.error(f"❌ Client Initialization Error: {e}")
     st.stop()
+
 
 # 3. File Uploader UI
 uploaded_file = st.file_uploader("Upload an Image (JPG, JPEG, PNG):", type=["jpg", "jpeg", "png"])
@@ -83,7 +76,7 @@ if uploaded_file is not None:
             except Exception as e:
                 st.error(
                     f"❌ **Google API Communication Failed!**\n\n"
-                    f"Please confirm your key tier is valid and copied accurately.\n\n"
+                    f"Please confirm your key string is copied accurately with no extra spaces.\n\n"
                     f"**Details:** {e}"
                 )
                 st.stop()
