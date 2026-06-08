@@ -1,7 +1,7 @@
 streamlit
-google-genai 
-pillow 
+google-genai
+pillow
 gtts
-SpeechRecognition 
-pyaudio
-streamlit-mic-recorder 
+SpeechRecognition
+streamlit-mic-recorder
+pygame
