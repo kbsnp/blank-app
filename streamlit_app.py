@@ -10,14 +10,16 @@ import time
 import json
 import io
 
+# --- Pygame Driver Configurations ---
 # Suppress Pygame welcome message
 os.environ['PYGAME_HIDE_SUPPORT_PROMPT'] = "hide"
+
 import pygame
 
 # --- Page Setup ---
 st.set_page_config(page_title="Streamlit Mic Audiobook Engine", page_icon="📖", layout="wide")
 st.title("🎙️ Frontend Mic Recording Audio Engine")
-st.write("Upload or snap a page image, then use the browser microphone button below to control playback or query Gemini.")
+st.write("Upload a page image, then use the browser microphone button below to control playback or query Gemini.")
 
 # --- Initialize Gemini Client ---
 @st.cache_resource
@@ -30,9 +32,16 @@ def get_gemini_client():
 
 client = get_gemini_client()
 
-# --- Initialize Audio Engine ---
+# --- Initialize Audio Engine with Hardware Fallback ---
 if not pygame.mixer.get_init():
-    pygame.mixer.init()
+    try:
+        # Pre-configure audio parameters to handle standard mp3 bitrates
+        pygame.mixer.pre_init(44100, -16, 2, 512)
+        pygame.mixer.init()
+    except pygame.error:
+        # If no audio hardware/device is found, reroute to a dummy driver to prevent app failure
+        os.environ['SDL_AUDIODRIVER'] = 'dummy'
+        pygame.mixer.init()
 
 # --- Initialize Session States ---
 if 'playback_status' not in st.session_state:
@@ -41,8 +50,6 @@ if 'extracted_text' not in st.session_state:
     st.session_state.extracted_text = ""
 if 'command_log' not in st.session_state:
     st.session_state.command_log = []
-if 'previous_source' not in st.session_state:
-    st.session_state.previous_source = None
 
 # --- Core Processing Functions ---
 
@@ -152,33 +159,14 @@ def process_command(raw_input):
             speak_agent_response(agent_reply)
 
 # --- UI Sidebar Layout ---
-st.sidebar.subheader("📥 Target Document Input")
-input_method = st.sidebar.radio("Choose Input Method:", ["Upload File", "Take a Photo with Camera"])
+uploaded_file = st.sidebar.file_uploader("Upload Page Image", type=["jpg", "png", "jpeg"])
 
-target_image = None
-current_source_key = None
-
-if input_method == "Upload File":
-    uploaded_file = st.sidebar.file_uploader("Upload Page Image", type=["jpg", "png", "jpeg"])
-    if uploaded_file:
-        target_image = Image.open(uploaded_file)
-        current_source_key = f"upload_{uploaded_file.name}"
-else:
-    camera_file = st.sidebar.camera_input("Snap a picture of the page")
-    if camera_file:
-        target_image = Image.open(camera_file)
-        # Generate a unique key using the current timestamp to detect a fresh snap
-        current_source_key = f"camera_{camera_file.size}"
-
-# --- Handle Image processing & resets if the document changes ---
-if target_image:
-    st.sidebar.image(target_image, caption="Target Page", use_column_width=True)
-    
-    # If a brand new image is uploaded or snapped, clear old states and process it
-    if st.session_state.previous_source != current_source_key:
-        st.session_state.previous_source = current_source_key
+if uploaded_file:
+    img = Image.open(uploaded_file)
+    st.sidebar.image(img, caption="Target Page", use_column_width=True)
+    if not st.session_state.extracted_text:
         with st.spinner("Extracting text contents..."):
-            st.session_state.extracted_text = extract_text(target_image)
+            st.session_state.extracted_text = extract_text(img)
             generate_audio_file(st.session_state.extracted_text)
             st.session_state.playback_status = "ready"
             st.rerun()
@@ -191,7 +179,7 @@ with col1:
     if st.session_state.extracted_text:
         st.text_area("Content:", st.session_state.extracted_text, height=450, disabled=True)
     else:
-        st.info("Upload an image or take a snapshot in the sidebar to populate data matrices.")
+        st.info("Upload an image in the sidebar to populate data matrices.")
 
 with col2:
     st.subheader("⚙️ System Processing Console")
@@ -210,15 +198,15 @@ with col2:
         st.write("Click **Start Recording**, speak your command or question, then click **Stop**.")
         
         # --- Native Browser Button Click Interceptor ---
-        if st.query_params.get("action") == ["stop_audio"]:
-            if pygame.mixer.music.get_busy():
+        if st.query_params.get("action") == "stop_audio":
+            if pygame.mixer.get_init() and pygame.mixer.music.get_busy():
                 pygame.mixer.music.pause()
                 st.session_state.playback_status = "paused"
                 st.session_state.command_log.append("🔇 Mic opened. Audio auto-paused.")
             st.query_params.clear()
             st.rerun()
 
-        # HTML/JS bridge code to detect frontend mic interactions
+        # HTML/JS bridge code to catch the precise moment the frontend mic button is pressed
         components.html("""
             <script>
                 const parentDoc = window.parent.document;
@@ -261,7 +249,7 @@ with col2:
                     else:
                         st.error("Could not capture clear speech vectors. Click start and try again.")
     else:
-        st.info("Provide a book page using the options on the left to unlock the voice operations panel.")
+        st.info("Upload a book page to unlock the voice operations panel.")
         
     st.write("---")
     st.write("**🗂️ Front-End Voice Log Display:**")
